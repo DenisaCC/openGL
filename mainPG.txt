@@ -1,0 +1,620 @@
+/*#include <math.h>
+#include <GL/glut.h>
+
+#include <vector>
+
+#include "library/loadpng.h"
+#include "library/process_image.h"
+#include "library/GLTexture.h"
+
+
+#define width 720
+#define height 384
+#define interval 15
+#define count_p 5
+#define count_c 3
+#define scale 3
+#define cell_size 24
+#define max_x 30
+#define max_y 24
+#define pi 3.141
+#define rad 57.295
+
+float gravity = -1.2f;
+Rect rct_background = { 0, 720, 48, 384 }, rct_ground = { 0, 720, 0, 48 };
+Image img_background, img_ground;
+
+int map[max_y][max_x];
+
+float boundary_left = 20.0f, boundary_right = 690.0f;
+
+class c_platformer {
+public:
+    static Image img_save;
+    static void Load_Image() {
+        Load_Texture_Swap(&img_save, "images/p.png");
+        Zoom_Image(&img_save, scale);
+    }
+
+    Rect rct;
+    Image* img;
+
+    void Init(int _x, int _y) {
+        map[_y][_x] = map[_y][_x + 1] = map[_y][_x + 2] = map[_y][_x + 3] = 1;
+        img = &img_save;
+        float x = (_x + 2) * cell_size;
+        float y = _y * cell_size;
+        rct.Left = x - img->w / 2;
+        rct.Right = rct.Left + img->w;
+        rct.Bottom = y;
+        rct.Top = rct.Bottom + img->h;
+    }
+
+    void Draw() {
+        Map_Texture(img);
+        Draw_Rect(&rct);
+    }
+};
+Image c_platformer::img_save;
+c_platformer platformers[count_p];
+#define start_x 80
+#define start_y 80
+class c_cloud {
+public:
+    static Image img_save;
+    static void Load_Image() {
+        Load_Texture_Swap(&img_save, "images/cloud.png");
+        Zoom_Image(&img_save, scale);
+    }
+
+    Rect rct;
+    Image* img;
+
+    float x, y;
+
+    void Init(float _x, float _y) {
+        img = &img_save;
+        x = _x;
+        y = _y;
+        Update_Rect();
+        rct.Bottom = y;
+        rct.Top = rct.Bottom + img->h;
+    }
+
+    void Draw() {
+        Map_Texture(img);
+        Draw_Rect(&rct);
+    }
+
+    void Update_Rect() {
+        rct.Left = x - img->w / 2;
+        rct.Right = rct.Left + img->w;
+    }
+
+    void Update() {
+        x -= 0.3f;
+        if (x < -123.0f)
+            x += 1080.0f;
+        Update_Rect();
+    }
+};
+Image c_cloud::img_save;
+c_cloud clouds[count_c];
+
+class c_line {
+public:
+    static Image img_save[2];
+    static Rect rct;
+    Image* img;
+    float x, y, angle;
+    int player;
+    c_line(int _player, float _x, float _y, float _angle) {
+        player = _player;
+        x = _x;
+        y = _y;
+        angle = _angle;
+        img = &img_save[player];
+    }
+
+    void Draw() {
+        glTranslatef(x, y, 0.0f);
+        glRotatef(angle, 0.0f, 0.0f, 1.0f);
+        Map_Texture(img);
+        Draw_Rect(&rct);
+        glLoadIdentity();
+    }
+
+    static void Load_Image() {
+        Image img;
+        Load_Texture_Swap(&img, "images/lines.png");
+        Crop_Image(&img, &img_save[0], 0, 0, 8, 4);
+        Crop_Image(&img, &img_save[1], 0, 4, 8, 4);
+        Zoom_Image(&img_save[0], scale);
+        Zoom_Image(&img_save[1], scale);
+        Delete_Image(&img);
+        rct.Left = -12.0f;
+        rct.Right = 12.0f;
+        rct.Bottom = -8.0f;
+        rct.Top = 8.0f;
+    }
+};
+
+Image c_line::img_save[2];
+Rect c_line::rct;
+std::vector<c_line> lines;
+
+class c_coin {
+public:
+    static Image img_save;
+    static float ax_base, ay_base;
+    static float vx_max, vy_max;
+
+    Rect rct;
+    Image* img;
+    float x, y, vx, vy, ax, ay, Scale;
+    int timer, anim, region;
+    bool is_Alive;
+
+    c_coin(float _x, float _y, int _region) {
+        x = _x + rand() % 41 - 20 + start_x;
+        y = _y + rand() % 41 - 20 + start_y;
+        vx = vx_max;
+        vy = 0.0f;
+        ax = ax_base;
+        ay = ay_base;
+
+        region = _region;
+        timer = 0;
+        anim = 0;
+        Scale = 0.0f;
+        is_Alive = false;
+        img = &img_save;
+
+    }
+
+    void Update_Rect() {
+        rct.Left = x - img->w / 2 * Scale;
+        rct.Right = rct.Left + img->w * Scale;
+        rct.Bottom = y - img->h / 2 * Scale;
+        rct.Top = rct.Bottom + img->h * Scale;
+    }
+
+    void Draw() {
+        Map_Texture(img);
+        Draw_Rect(&rct);
+    }
+
+    void Update() {
+        if (!is_Alive) {
+            Scale += 0.05f;
+            if (Scale >= 1.0f) {
+                Scale = 1.0f;
+                is_Alive = true;
+            }
+        }
+        x += vx;
+        y += vy;
+        vx += ax;
+        vy += ay;
+
+        if (vx >= vx_max || vx <= -vx_max)
+            ax = vx < 0 ? ax_base : -ax_base;
+        if (vy >= vy_max || vy <= -vy_max)
+            ay = vy < 0 ? ay_base : -ay_base;
+
+        timer++;
+        if (timer == 6) {
+            timer = 0;
+            anim = 1 - anim;
+            img = &img_save;
+        }
+        Update_Rect();
+    }
+
+    bool is_Caught(float _x, float _y)
+    {
+        if (_x - 20.0f < x && _x + 20.0f > x && _y - 6.0f < y && _y + 34.0f > y)
+            return true;
+        return false;
+    }
+
+    static void Load_Image() {
+        Load_Texture(&img_save, "images/c2 .png");
+        Zoom_Image(&img_save, scale);
+    }
+};
+
+Image c_coin::img_save;
+float c_coin::ax_base = 0.015f, c_coin::ay_base = 0.02f;
+float c_coin::vx_max = 0.2f, c_coin::vy_max = 0.4f;
+std::vector<c_coin> coins;
+
+class c_point {
+public:
+    float x, y;
+    c_point(float _x, float _y) {
+        x = _x;
+        y = _y;
+    }
+};
+
+class c_spawn_coins {
+public:
+    c_point spawn_points[6] = {
+        c_point(100.0f,300.0f), c_point(620.0f,300.0f),
+        c_point(360.0f,280.0f), c_point(360.0f,130.0f),
+        c_point(100.0f,120.0f), c_point(620.0f,120.0f) };
+
+    int max_coins, count_spawn_points, timer;
+    c_spawn_coins(int _max_coins) {
+        max_coins = _max_coins;
+        timer = 60;
+        count_spawn_points = sizeof(spawn_points) / sizeof(c_point);
+    }
+
+    void Update() {
+        timer++;
+        if (timer == 90){
+            timer = 0;
+        if (coins.size() < max_coins) {
+            bool check;
+            int region;
+            do {
+                check = false;
+                region = rand() % count_spawn_points;
+                for (c_coin coin : coins)
+                    if (coin.region == region) {
+                        check = true;
+                        break;
+                    }
+            } while (check);
+            coins.push_back(c_coin(spawn_points[region].x, spawn_points[region].y, region));
+        }
+    }
+    }
+};
+c_spawn_coins spawn_coins(2);
+
+class c_characters {
+public:
+    static Image img_save[2][2][2];
+    static float map_offset[2];
+    static float map_base_angle[2];
+
+    Rect rct;
+    Image* img;
+
+    float x, y, vx, vy, angle;
+    int player, drt, anim, prepare_stt, angle_drt, score;
+    bool is_jumping, is_jump_pressed;
+
+    void Init(int _player) {
+        player = _player;
+        drt = 1 - player;
+        anim = 0;
+        float offset = 11.0f * cell_size * (player == 0 ? -1 : 1);
+        x = width / 2 + offset;
+        y = cell_size * 2.0f;
+        prepare_stt = 0;
+        is_jumping = false;
+        is_jump_pressed = false;
+        Update_Image();
+        Update_Rect();
+    }
+
+    void Update_Image() {
+        img = &img_save[player][drt][anim];
+    }
+
+    void Update_Rect() {
+        rct.Left = x - img->w / 2;
+        rct.Right = rct.Left + img->w;
+        rct.Bottom = y;
+        rct.Top = rct.Bottom + img->h;
+    }
+
+    void Draw() {
+        Map_Texture(img);
+        Draw_Rect(&rct);
+    }
+
+    void Jump() {
+        if (!is_jumping) {
+            is_jumping = true;
+            anim = 1;
+            Update_Image();
+        }
+    }
+
+    void key_down() {
+        is_jump_pressed = true;
+    }
+
+    void key_up() {
+        is_jump_pressed = false;
+        Jump();
+    }
+
+    void Prepare_start() {
+        if (prepare_stt == 0) {
+            prepare_stt = 1;
+            angle_drt = drt;
+            angle = map_base_angle[drt];
+        }
+    }
+
+    void Prepare_end() {
+        if (prepare_stt == 1)
+            prepare_stt = 2;
+    }
+
+    void Update() {
+        if (!is_jumping) {
+            if (is_jump_pressed)
+                Prepare_start();
+            else
+                Prepare_end();
+            if (prepare_stt > 0) {
+                if (prepare_stt == 2) {
+                    prepare_stt = 0;
+                    Jump();
+                }
+                else {
+                    angle += map_offset[angle_drt];
+                    if (check_angle[drt][angle_drt](angle))
+                        angle_drt = 1 - angle_drt;
+                    float angle2 = angle / rad;
+                    float x2 = x, y2 = y + 4.0f, vx2, vy2;
+                    vx2 = cos(angle2) * 4 + (drt == 0 ? angle2 - pi : angle2) * 9;
+                    vy2 = sin(angle2) * 21;
+                    vx = vx2;
+                    vy = vy2;
+                    for (int i = 0; i < 18; i++) {
+                        x2 += vx2;
+                        y2 += vy2;
+                        if (i % 3 == 2) {
+                            angle2 = atan2(vy2, vx2) * rad;
+                            lines.push_back(c_line(player, x2, y2, angle2));
+                        }
+                        vy2 += gravity;
+                    }
+                }
+            }
+        }
+        else {
+            float y_old = y;
+            x += vx;
+            y += vy;
+            vy += gravity;
+            if (vy < -24.0f)
+                vy = -24.0f;
+            if (vy <= 0.0f) {
+                int col1 = (x - 9.0f) / cell_size;
+                int col2 = (x + 9.0f) / cell_size;
+                int row_old = y_old / cell_size;
+                int row = y / cell_size;
+                if ((!map[row_old][col1] && !map[row_old][col2]) && (map[row][col1] || map[row][col2])) {
+                    is_jumping = false;
+                    y = (row + 1) * cell_size;
+                    vx = 0.0f;
+                    vy = 0.0f;
+                    anim = 0;
+                    Update_Image();
+                }
+            }
+            if (check_boundary[drt](x)) {
+                drt = 1 - drt;
+                vx = -vx;
+                Update_Image();
+            }
+
+            std::vector<c_coin>::iterator it = coins.begin();
+            while (it != coins.end()) {
+                if (it->is_Caught(x, y)) {
+                    it = coins.erase(it);
+                    score++;
+                }
+                else
+                    it++;
+            }
+        }
+            Update_Rect();
+        }
+
+
+
+    static bool check_boundary_left(float x) {
+        return x < boundary_left;
+    }
+    static bool check_boundary_right(float x) {
+        return x > boundary_right;
+    }
+    static bool (*check_boundary[2])(float x);
+
+    static bool check_angle_left_decrease(float angle) {
+        return angle <= 110.0f;
+    }
+    static bool check_angle_left_increase(float angle) {
+        return angle >= 160.0f;
+    }
+    static bool check_angle_right_decrease(float angle) {
+        return angle <= 20.0f;
+    }
+    static bool check_angle_right_increase(float angle) {
+        return angle >= 70.0f;
+    }
+    static bool (*check_angle[2][2])(float angle);
+
+    static void Load_Image() {
+        Image img;
+        Load_Texture(&img, "images/c1.png");
+        Crop_Image(&img, &img_save[0][1][0], 0, 0, 18, 16);
+        Crop_Image(&img, &img_save[0][1][1], 0, 16, 18, 16);
+        Crop_Image(&img, &img_save[1][1][0], 18, 0, 18, 16);
+        Crop_Image(&img, &img_save[1][1][1], 18, 16, 18, 16);
+        Swap_Image(img_save[0][1][0].img, 18, 16);
+        Swap_Image(img_save[0][1][1].img, 18, 16);
+        Swap_Image(img_save[1][1][0].img, 18, 16);
+        Swap_Image(img_save[1][1][1].img, 18, 16);
+        Zoom_Image(&img_save[0][1][0], scale);
+        Zoom_Image(&img_save[0][1][1], scale);
+        Zoom_Image(&img_save[1][1][0], scale);
+        Zoom_Image(&img_save[1][1][1], scale);
+        Flip_Horizontal(&img_save[0][1][0], &img_save[0][0][0]);
+        Flip_Horizontal(&img_save[0][1][1], &img_save[0][0][1]);
+        Flip_Horizontal(&img_save[1][1][0], &img_save[1][0][0]);
+        Flip_Horizontal(&img_save[1][1][1], &img_save[1][0][1]);
+        Delete_Image(&img);
+
+    }
+
+};
+
+Image c_characters::img_save[2][2][2];
+float c_characters::map_offset[2] = { -1.0f, 1.0f };
+float c_characters::map_base_angle[2] = { 160.0f,20.0f };
+bool(*c_characters::check_boundary[2])(float x) = { c_characters::check_boundary_left, c_characters::check_boundary_right};
+bool(*c_characters::check_angle[2][2])(float angle) = {
+    {check_angle_left_decrease, check_angle_left_increase},
+    {check_angle_right_decrease, check_angle_right_increase} };
+
+c_characters characters[2];
+
+void Display() {
+    glClear(GL_COLOR_BUFFER_BIT);
+    glLoadIdentity();
+    Map_Texture(&img_background);
+    Draw_Rect(&rct_background);
+    Map_Texture(&img_ground);
+    Draw_Rect(&rct_ground);
+
+    for (c_line line : lines)
+        line.Draw();
+
+    for (int i = 0; i < count_c; i++)
+        clouds[i].Draw();
+
+    int size = coins.size();
+    for (int i = 0; i < size; i++)
+        coins[i].Draw();
+
+    for (int i = 0; i < count_p; i++)
+        platformers[i].Draw();
+
+    characters[0].Draw();
+    characters[1].Draw();
+    
+    glutSwapBuffers();
+}
+
+void Init_Game() {
+    Load_Texture_Swap(&img_background, "images/b1.png");
+    Zoom_Image(&img_background, scale);
+    Load_Texture_Swap(&img_ground, "images/ground.png");
+    Zoom_Image(&img_ground, scale);
+
+    for (int i = 0; i < 2; i++)
+        for (int j = 0; j < max_x; j++)
+            map[i][j] = 1;
+    for (int i = 2; i < max_y; i++)
+        for (int j = 0; j < max_x; j++)
+            map[i][j] = 0;
+    
+    c_platformer::Load_Image();
+    c_cloud::Load_Image();
+    c_characters::Load_Image();
+    c_line::Load_Image();
+    c_coin::Load_Image();
+
+    platformers[0].Init(5, 5);
+    platformers[1].Init(21, 5);
+    platformers[2].Init(13, 9);
+    platformers[3].Init(5, 13);
+    platformers[4].Init(21, 13);
+
+    clouds[0].Init(570.0f, 210.0f);
+    clouds[1].Init(930.0f, 300.0f);
+    clouds[2].Init(240.0f, 255.0f);
+
+    characters[0].Init(0);
+    characters[1].Init(1);
+}
+
+void InitGL() {
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glViewport(0, 0, width, height);
+    gluOrtho2D(0, width, 0, height);
+    glMatrixMode(GL_MODELVIEW);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_LINE_SMOOTH);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glEnable(GL_TEXTURE_2D);
+    Init_Game();
+
+}
+
+void Timer(int value) {
+    for (int i = 0; i < count_c; i++)
+        clouds[i].Update();
+
+    spawn_coins.Update();
+
+    int size = coins.size();
+    for (int i = 0; i < size; i++)
+        coins[i].Update();
+
+    lines.clear();
+
+    characters[0].Update();
+    characters[1].Update();
+    
+    glutPostRedisplay();
+    glutTimerFunc(interval, Timer, 0);
+}
+
+void keyboard_down(GLubyte key, int x, int y) {
+    switch (key) {
+    case 32:
+        characters[0].key_down();
+        break;
+    case 13:
+        characters[1].key_down();
+        break;
+    }
+}
+
+void keyboard_up(GLubyte key, int x, int y) {
+    switch (key) {
+    case 32:
+       characters[0].key_up();
+       break;
+    case 13:
+        characters[1].key_up();
+        break;
+    }
+}
+
+
+int main(int argc, char** argv) {
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB);
+    int pos_x = (glutGet(GLUT_SCREEN_WIDTH) - width) >> 1;
+    int pos_y = (glutGet(GLUT_SCREEN_HEIGHT) - height) >> 1;
+    glutInitWindowPosition(pos_x, pos_y);
+    glutInitWindowSize(width, height);
+    glutCreateWindow("proiect PG");
+    InitGL();
+    glutDisplayFunc(Display);
+    glutTimerFunc(interval, Timer, 0);
+    glutKeyboardFunc(keyboard_down);
+    glutKeyboardUpFunc(keyboard_up);
+    glutMainLoop();
+    return 0;
+}
+*/
