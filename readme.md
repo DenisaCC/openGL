@@ -1,5 +1,4 @@
-PROIECT PRELUCRARE GRAFICĂ - JOC VIDEO
-Chelaru Denisa-Camelia, grupa 4LF301
+PRELUCRARE GRAFICĂ - JOC VIDEO
 
 Proiectul a fost scris în limbajul C++, utilizând interfața OpenGL în mediul de lucru Visual Studio.
 
